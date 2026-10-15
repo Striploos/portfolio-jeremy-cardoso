@@ -518,9 +518,30 @@ footer{padding:40px 5vw;color:var(--mute);text-align:center}
   <div class="bar"><input id="q" type="search" placeholder="Rechercher un projet" aria-label="Rechercher"></div>
   <div id="badge" hidden><span class="chip on-b">Filtre actif : <b id="bl"></b></span> <button class="chip" id="clr" aria-label="Retirer le filtre">✕</button></div>
   <div class="grid" id="grid">
-    <article class="card" data-l="java"><h3>Biosphère</h3><p class="yr">2026 · équipe de 2</p><p>IA décisionnelle capable de s'affronter sur un jeu de plateau, avec arbres de recherche sur 3 niveaux.</p><div class="tags"><span>Java</span><span>Algorithmique</span><span>Tests unitaires</span></div></article>
-    <article class="card" data-l="c# python sql"><h3>Application Visu</h3><p class="yr">2026 · équipe de 6</p><p>Analyse et visualisation de données : modélisation SQL, traitement Python, affichage C#. Projet piloté avec Gantt et PBS/WBS.</p><div class="tags"><span>C#</span><span>Python</span><span>SQL</span></div></article>
-    <article class="card" data-l="js"><h3>Pixel War</h3><p class="yr">Projet perso</p><p>Application web interactive avec rendu de grille et intégration d'API.</p><div class="tags"><span>JavaScript</span><span>HTML5</span><span>CSS3</span></div></article>
+    <article class="card" data-l="java" data-repo="biosphere">
+      <h3>Biosphère</h3>
+      <p class="yr">2026 · équipe de 2</p>
+      <p>IA décisionnelle capable de s'affronter sur un jeu de plateau, avec arbres de recherche sur 3 niveaux.</p>
+      <div class="tags"><span>Java</span><span>Algorithmique</span><span>Tests unitaires</span></div>
+    </article>
+    <article class="card" data-l="c# python sql" data-repo="applicationvisu">
+      <h3>Application Visu</h3>
+      <p class="yr">2026 · équipe de 6</p>
+      <p>Analyse et visualisation de données : modélisation SQL, traitement Python, affichage C#. Projet piloté avec Gantt et PBS/WBS.</p>
+      <div class="tags"><span>C#</span><span>Python</span><span>SQL</span></div>
+    </article>
+    <article class="card" data-l="js linux" data-repo="pixelwar">
+      <h3>Pixel War</h3>
+      <p class="yr">2026 · Projet perso · GitHub</p>
+      <p>Application web multijoueur interactive en temps réel avec rendu de grille, API REST sous Node.js/Express et sauvegarde automatique.</p>
+      <div class="tags"><span>JavaScript</span><span>Node.js</span><span>Express</span><span>HTML5</span><span>CSS3</span></div>
+    </article>  
+    <article class="card" data-l="js" data-repo="domotique">
+      <h3>Dashboard Domotique IoT</h3>
+      <p class="yr">2026 · Projet perso · GitHub</p>
+      <p>Système domotique embarqué sous Arduino synchronisé avec Firebase Realtime Database et piloté via une interface web temps réel.</p>
+      <div class="tags"><span>JavaScript</span><span>Arduino</span><span>Firebase</span><span>HTML5</span><span>CSS3</span></div>
+    </article>
   </div>
   <p id="none">Aucun projet ne correspond pour le moment.</p>
 </section>
@@ -589,7 +610,8 @@ document.addEventListener('keydown', (e) => {
 });
 
 /* Filtrage des projets */
-const cards = [...document.querySelectorAll('.card')];
+const grid = document.getElementById('grid');
+let cards = [...document.querySelectorAll('.card')];
 const q = document.getElementById('q');
 const keys = [...document.querySelectorAll('button.key')];
 const badge = document.getElementById('badge');
@@ -624,6 +646,98 @@ document.getElementById('clr').onclick = () => {
 };
 
 q.oninput = apply;
+
+/* Synchronisation automatique des dépôts GitHub (hors flutter_aeroponie_app) */
+function normalizeRepoName(name){
+  return (name || '').toLowerCase().replace(/[-_\s]/g, '').replace(/main\$/, '');
+}
+
+function mapGitHubLangToKeys(ghLang, topics = [], name = '', desc = ''){
+  const raw = `${ghLang || ''} ${topics.join(' ')} ${name} ${desc}`.toLowerCase();
+  const mapped = new Set();
+  if (raw.includes('java') && !raw.includes('javascript')) mapped.add('java');
+  if (raw.includes('c#') || raw.includes('csharp') || raw.includes('dotnet')) mapped.add('c#');
+  if (raw.includes('javascript') || raw.includes('typescript') || raw.includes('html') || raw.includes('css') || raw.includes('node') || raw.includes('react') || raw.includes('expo') || raw.includes('vue')) mapped.add('js');
+  if (raw.includes('python')) mapped.add('python');
+  if (raw.includes('sql') || raw.includes('database') || raw.includes('sqlite') || raw.includes('postgres') || raw.includes('mysql')) mapped.add('sql');
+  if (raw.includes('linux') || raw.includes('shell') || raw.includes('bash') || ghLang === 'C' || ghLang === 'C++' || ghLang === 'Shell') mapped.add('linux');
+  return mapped.size ? [...mapped].join(' ') : 'js';
+}
+
+function formatRepoTitle(name){
+  return name
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, l => l.toUpperCase());
+}
+
+async function syncGitHubRepos(){
+  try {
+    const res = await fetch('https://api.github.com/users/Striploos/repos?per_page=100&sort=updated');
+    if (!res.ok) return;
+    const repos = await res.json();
+    if (!Array.isArray(repos)) return;
+
+    const existingKeys = new Set(
+      cards.map(c => normalizeRepoName(c.dataset.repo || c.querySelector('h3')?.textContent))
+    );
+
+    repos.forEach(repo => {
+      if (!repo || !repo.name) return;
+      // Exclusion explicite de flutter_aeroponie_app
+      if (repo.name.toLowerCase() === 'flutter_aeroponie_app') return;
+
+      const norm = normalizeRepoName(repo.name);
+      const isAlreadyPresent = [...existingKeys].some(k => k && (norm.includes(k) || k.includes(norm)));
+      if (isAlreadyPresent) return;
+
+      existingKeys.add(norm);
+
+      const year = repo.created_at ? new Date(repo.created_at).getFullYear() : '2026';
+      const dataL = mapGitHubLangToKeys(repo.language, repo.topics || [], repo.name, repo.description);
+      const tags = [];
+      if (repo.language) tags.push(repo.language);
+      if (Array.isArray(repo.topics)) {
+        repo.topics.slice(0, 3).forEach(t => {
+          if (!tags.some(x => x.toLowerCase() === t.toLowerCase())) tags.push(t);
+        });
+      }
+      if (!tags.length) tags.push('GitHub');
+
+      const article = document.createElement('article');
+      article.className = 'card';
+      article.dataset.l = dataL;
+      article.dataset.repo = norm;
+
+      const h3 = document.createElement('h3');
+      h3.textContent = formatRepoTitle(repo.name);
+
+      const yr = document.createElement('p');
+      yr.className = 'yr';
+      yr.textContent = `${year} · Projet GitHub`;
+
+      const desc = document.createElement('p');
+      desc.textContent = repo.description || 'Projet disponible sur mon dépôt GitHub Striploos.';
+
+      const tagsDiv = document.createElement('div');
+      tagsDiv.className = 'tags';
+      tags.forEach(t => {
+        const span = document.createElement('span');
+        span.textContent = t;
+        tagsDiv.appendChild(span);
+      });
+
+      article.append(h3, yr, desc, tagsDiv);
+      grid.appendChild(article);
+    });
+
+    cards = [...document.querySelectorAll('.card')];
+    apply();
+  } catch (e) {
+    // En cas d'utilisation hors-ligne, les cartes statiques restent affichées
+  }
+}
+
+syncGitHubRepos();
 </script>
 </body>
 </html>
